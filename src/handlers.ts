@@ -36,15 +36,16 @@ const http_inner = async (event: APIGatewayProxyEventV2, context: Context) => {
   const data_event = helpers.sanitize_event(event);
   const data_context = helpers.sanitize_context(context);
 
-  // NODE_PATH 따라가면 node_modules 목록을 얻을 수 있다
-  const data_nodepath = await readdir_nodepath(process.env.NODE_PATH ?? "");
+  // NODE_PATH 따라가면 node_modules 목록을 얻을 수 있다.
+  // 관심있는건 aws-sdk 목록과 버전
+  const data_nodepath_sdk = await readdir_nodepath_sdk(process.env.NODE_PATH ?? "");
 
   const output = {
     event: data_event,
     context: data_context,
     env: data_env,
     settings: data_settings,
-    nodepath: data_nodepath,
+    nodepath_sdk: data_nodepath_sdk,
   };
 
   // TODO: 적당히 이쁘게 보이도록
@@ -77,11 +78,17 @@ const http_inner = async (event: APIGatewayProxyEventV2, context: Context) => {
  *
  * @link https://docs.aws.amazon.com/lambda/latest/dg/lambda-runtimes.html
  */
-const validate_nodepath = async (fp: string): Promise<Result<boolean>> => {
+const validate_nodepath_sdk = async (fp: string): Promise<Result<boolean>> => {
   try {
-    const stat = await fs.stat(fp);
-    if (stat.isFile()) {
-      const err = new Error("NODE_PATH is file");
+    if (!fp.endsWith("node_modules")) {
+      const err = new Error("NODE_PATH does not end with node_modules");
+      (err as any).path = fp;
+      return { ok: false, reason: err };
+    }
+
+    const stat = await fs.stat(path.join(fp, "@aws-sdk"));
+    if (!stat.isDirectory()) {
+      const err = new Error("NODE_PATH/@aws-sdk is not directory");
       (err as any).path = fp;
       return { ok: false, reason: err };
     } else {
@@ -98,13 +105,10 @@ const validate_nodepath = async (fp: string): Promise<Result<boolean>> => {
   }
 };
 
-const readdir_nodepath = async (line: string) => {
-  const tokens = line.split(":").filter((x) => x.endsWith("node_modules"));
-
-  // 실제로 존재하는 node_modules 디렉토리만 관심있다
+const readdir_nodepath_sdk = async (line: string) => {
   const directories_candidate = await Promise.all(
-    tokens.map(async (fp: string) => {
-      const result = await validate_nodepath(fp);
+    line.split(":").map(async (fp: string) => {
+      const result = await validate_nodepath_sdk(fp);
       return result.ok ? fp : null;
     })
   );
@@ -114,7 +118,7 @@ const readdir_nodepath = async (line: string) => {
 
   const results = await Promise.all(
     directories.map(async (fp: string) => {
-      const founds = await readdir_directory(fp);
+      const founds = await readdir_sdk(fp);
       const map = Object.fromEntries(founds);
       return [fp, map] as const;
     })
@@ -122,56 +126,27 @@ const readdir_nodepath = async (line: string) => {
   return Object.fromEntries(results);
 };
 
-const readdir_directory = async (
+const readdir_sdk = async (
   fp: string
 ): Promise<(readonly [string, string])[]> => {
-  const founds = await fs.readdir(fp, { withFileTypes: true });
-  const founds_library = founds.filter((x) => {
-    if (x.isFile()) {
-      return false;
-    }
-    if (x.name.startsWith(".")) {
-      // .bin, .pnpm, .cache ...
-      return false;
-    }
-    if (x.name.startsWith("@types")) {
-      // 타입정의는 런타임에 필요 없다
-      return false;
-    }
-
+  // 여기까지 진입하기전에 @aws-sdk 디렉토리의 존재는 검증되었다.
+  const sdkName = "@aws-sdk";
+  const sdkPath = path.join(fp, sdkName);
+  const founds = await fs.readdir(sdkPath, { withFileTypes: true });
+  const founds_sdk = founds.filter((x) => {
+    if (x.isFile()) return false;
+    if (x.name.startsWith(".")) return false;
     return true;
   });
 
-  const sdkName = "@aws-sdk";
-  if (founds_library.length === 1 && founds_library[0]?.name === sdkName) {
-    // 람다 런타임에 포함된 aws-sdk-v3의 버전에만 관심있다
-    // node_modules에 @aws-sdk 하나만 있는 경우는 localhost에서는 없다
-    const sdkPath = path.join(fp, sdkName);
-    const founds = await fs.readdir(sdkPath, { withFileTypes: true });
-    const founds_sdk = founds.filter((x) => {
-      if (x.isFile()) return false;
-      if (x.name.startsWith(".")) return false;
-      return true;
-    });
-
-    const entries = await Promise.all(
-      founds_sdk.map(async (f) => {
-        const version = await readdir_version(path.join(sdkPath, f.name));
-        const name = `${sdkName}/${f.name}`;
-        return [name, version] as const;
-      })
-    );
-    return entries;
-  } else {
-    // localhost에서 테스트할때 진입
-    const entries = await Promise.all(
-      founds_library.map(async (f) => {
-        const version = await readdir_version(path.join(fp, f.name));
-        return [f.name, version] as const;
-      })
-    );
-    return entries;
-  }
+  const entries = await Promise.all(
+    founds_sdk.map(async (f) => {
+      const version = await readdir_version(path.join(sdkPath, f.name));
+      const name = `${sdkName}/${f.name}`;
+      return [name, version] as const;
+    })
+  );
+  return entries;
 };
 
 const readdir_version = async (fp: string): Promise<string> => {
