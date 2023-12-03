@@ -36,11 +36,10 @@ package:
 functions:
   http:
     handler: artifact/handlers.http
+    url: true
     package:
       patterns:
         - artifact/handlers.mjs*
-        - views/**/*
-        - static/**/*
     events:
       - httpApi:
           method: ANY
