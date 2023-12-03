@@ -7,13 +7,34 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import * as settings from "./settings.js";
 import * as helpers from "./helpers.js";
+import { Result } from "./types.js";
 
 export const http: APIGatewayProxyHandlerV2 = async (event, context) => {
-  const data_env = sanitize_env(process.env);
-  const data_settings = sanitize_settings(settings);
+  try {
+    return await http_inner(event, context);
+  } catch (e) {
+    let data = e;
+    if (e instanceof Error) {
+      data = {
+        name: e.name,
+        message: e.message,
+        stack: e.stack,
+      };
+    }
 
-  const data_event = sanitize_event(event);
-  const data_context = sanitize_context(context);
+    return {
+      statusCode: 500,
+      body: JSON.stringify(data, null, 2),
+    };
+  }
+};
+
+const http_inner = async (event: APIGatewayProxyEventV2, context: Context) => {
+  const data_env = helpers.sanitize_env(process.env);
+  const data_settings = helpers.sanitize_settings(settings);
+
+  const data_event = helpers.sanitize_event(event);
+  const data_context = helpers.sanitize_context(context);
 
   // NODE_PATH 따라가면 node_modules 목록을 얻을 수 있다
   const data_nodepath = await readdir_nodepath(process.env.NODE_PATH ?? "");
@@ -34,99 +55,45 @@ export const http: APIGatewayProxyHandlerV2 = async (event, context) => {
 };
 
 /**
- * @link https://docs.aws.amazon.com/lambda/latest/dg/configuration-envvars.html
+ * NODE_PATH에 정의된 경로가 항상 존재한다고 보장할수 없다.
+ * 그래서 직접 열어보는 함수를 붙임.
+ *
+ * message: "ENOENT: no such file or directory, scandir '/opt/nodejs/node20/node_modules'"
+ * 같은 에러가 실제로 발생한다.
  */
-const sanitize_env = (env: NodeJS.ProcessEnv) => {
-  const entries_input = Object.entries(env);
-
-  // Reserved environment variables 중에서 AWS_, LAMBDA_ 로 시작하지 않는거
-  const keys_reserved = ["_HANDLER", "_X_AMZN_TRACE_ID"];
-
-  // Unreserved environment variables 중에서 AWS_, LAMBDA_ 로 시작하지 않는거
-  const keys_unreserved = [
-    "LANG",
-    "PATH",
-    "LD_LIBRARY_PATH",
-    "NODE_PATH",
-    "PYTHONPATH",
-    "GEM_PATH",
-    "TZ",
-  ];
-
-  // 외부로 보이고 싶지 않은 키
-  const keys_secret = [
-    "AWS_ACCESS_KEY_ID",
-    "AWS_SECRET_ACCESS_KEY",
-    "AWS_SESSION_TOKEN",
-  ];
-
-  const entries = entries_input
-    .map((entry) => {
-      const [key, _] = entry;
-      return keys_secret.includes(key)
-        ? ([key, "********"] as typeof entry)
-        : entry;
-    })
-    .filter(([key, _]) => {
-      return (
-        key.startsWith("AWS_") ||
-        key.startsWith("LAMBDA_") ||
-        keys_reserved.includes(key) ||
-        keys_unreserved.includes(key)
-      );
-    });
-  return Object.fromEntries(entries);
-};
-
-const fakeAccountId = "123456789012";
-const fakeApiId = "abcdefghij";
-
-const sanitize_event = (event: APIGatewayProxyEventV2) => {
-  const next = event;
-
-  const accountId = next.requestContext.accountId;
-  const apiId = next.requestContext.apiId;
-
-  const sanitize_accountId = (x: string) => x.replace(accountId, fakeAccountId);
-  const sanitize_apiId = (x: string) => x.replace(apiId, fakeApiId);
-  const sanitize_text = (x: string) => sanitize_accountId(sanitize_apiId(x));
-
-  const prev_requestContext = next.requestContext;
-  const next_requestContext: (typeof next)["requestContext"] = {
-    ...next.requestContext,
-    accountId: sanitize_text(prev_requestContext.accountId),
-    apiId: sanitize_text(prev_requestContext.apiId),
-    domainName: sanitize_text(prev_requestContext.domainName),
-    domainPrefix: sanitize_text(prev_requestContext.domainPrefix),
-  };
-  next.requestContext = next_requestContext;
-
-  return next;
-};
-
-const sanitize_context = (context: Context) => {
-  const next = context;
-  const accountId = helpers.extractAccountIdFromFunctionArn(
-    next.invokedFunctionArn
-  );
-  next.invokedFunctionArn = next.invokedFunctionArn.replace(
-    accountId,
-    fakeAccountId
-  );
-  return next;
-};
-
-const sanitize_settings = (s: typeof settings) => {
-  return {
-    NODE_ENV: s.NODE_ENV,
-    STAGE: s.STAGE,
-  };
+const validate_nodepath = async (fp: string): Promise<Result<boolean>> => {
+  try {
+    const stat = await fs.stat(fp);
+    if (stat.isFile()) {
+      return { ok: false, reason: new Error("NODE_PATH is file") };
+    } else {
+      return { ok: true, value: true };
+    }
+  } catch (e) {
+    if (e instanceof Error) {
+      return { ok: false, reason: e };
+    } else {
+      return { ok: false, reason: new Error("Unknown error") };
+    }
+  }
 };
 
 const readdir_nodepath = async (line: string) => {
   const tokens = line.split(":").filter((x) => x.endsWith("node_modules"));
-  const results = await Promise.all(
+
+  // 실제로 존재하는 node_modules 디렉토리만 관심있다
+  const directories_candidate = await Promise.all(
     tokens.map(async (fp: string) => {
+      const result = await validate_nodepath(fp);
+      return result.ok ? fp : null;
+    })
+  );
+  const directories = directories_candidate
+    .filter((x) => x !== null)
+    .map((x) => x!);
+
+  const results = await Promise.all(
+    directories.map(async (fp: string) => {
       const founds = await readdir_directory(fp);
       const map = Object.fromEntries(founds);
       return [fp, map] as const;
@@ -155,14 +122,36 @@ const readdir_directory = async (
     return true;
   });
 
-  const entries = await Promise.all(
-    founds_library.map(async (f) => {
-      const version = await readdir_version(path.join(fp, f.name));
-      return [f.name, version] as const;
-    })
-  );
+  const sdkName = "@aws-sdk";
+  if (founds_library.length === 1 && founds_library[0]?.name === sdkName) {
+    // 람다 런타임에 포함된 aws-sdk-v3의 버전에만 관심있다
+    // node_modules에 @aws-sdk 하나만 있는 경우는 localhost에서는 없다
+    const sdkPath = path.join(fp, sdkName);
+    const founds = await fs.readdir(sdkPath, { withFileTypes: true });
+    const founds_sdk = founds.filter((x) => {
+      if (x.isFile()) return false;
+      if (x.name.startsWith(".")) return false;
+      return true;
+    });
 
-  return entries;
+    const entries = await Promise.all(
+      founds_sdk.map(async (f) => {
+        const version = await readdir_version(path.join(sdkPath, f.name));
+        const name = `${sdkName}/${f.name}`;
+        return [name, version] as const;
+      })
+    );
+    return entries;
+  } else {
+    // localhost에서 테스트할때 진입
+    const entries = await Promise.all(
+      founds_library.map(async (f) => {
+        const version = await readdir_version(path.join(fp, f.name));
+        return [f.name, version] as const;
+      })
+    );
+    return entries;
+  }
 };
 
 const readdir_version = async (fp: string): Promise<string> => {
