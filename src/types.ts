@@ -5,7 +5,7 @@ type Result_Ok<T> = {
 
 type Result_Err = {
   ok: false;
-  error: Error;
+  reason: Error;
 };
 
 export type Result<T> = Result_Ok<T> | Result_Err;

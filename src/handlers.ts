@@ -55,17 +55,35 @@ const http_inner = async (event: APIGatewayProxyEventV2, context: Context) => {
 };
 
 /**
+ * @summary NODE_PATH 내부 접근해서 설치된 패키지 목록, 버전 확인
+ * @description
  * NODE_PATH에 정의된 경로가 항상 존재한다고 보장할수 없다.
  * 그래서 직접 열어보는 함수를 붙임.
  *
+ * nodejs20.x로 실행할 경우 NODE_PATH는 다음과 같다
+ *
+ * - /opt/nodejs/node20/node_modules
+ * - /opt/nodejs/node_modules
+ * - /var/runtime/node_modules
+ * - /var/runtime
+ * - /var/task
+ *
+ * 일부 경로는 예약되어있고 실제로 존재하지 않는다.
  * message: "ENOENT: no such file or directory, scandir '/opt/nodejs/node20/node_modules'"
- * 같은 에러가 실제로 발생한다.
+ *
+ * 람다 런타임 문서를 찾아보면 런타임에 포함된 SDK 버전은 알 수 있다.
+ * 하지만 설치된 패키지 전체 목록은 보이지 않는다.
+ * aws-sdk-v3에서는 패키지를 잘게 쪼개놔서 전체 목록을 따로 보고 싶었다.
+ *
+ * @link https://docs.aws.amazon.com/lambda/latest/dg/lambda-runtimes.html
  */
 const validate_nodepath = async (fp: string): Promise<Result<boolean>> => {
   try {
     const stat = await fs.stat(fp);
     if (stat.isFile()) {
-      return { ok: false, reason: new Error("NODE_PATH is file") };
+      const err = new Error("NODE_PATH is file");
+      (err as any).path = fp;
+      return { ok: false, reason: err };
     } else {
       return { ok: true, value: true };
     }
@@ -73,7 +91,9 @@ const validate_nodepath = async (fp: string): Promise<Result<boolean>> => {
     if (e instanceof Error) {
       return { ok: false, reason: e };
     } else {
-      return { ok: false, reason: new Error("Unknown error") };
+      const err = new Error("Unknown error");
+      (err as any).path = fp;
+      return { ok: false, reason: err };
     }
   }
 };
