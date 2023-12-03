@@ -1,12 +1,12 @@
+import fs from "node:fs/promises";
+import path from "node:path";
 import {
   APIGatewayProxyEventV2,
   APIGatewayProxyHandlerV2,
   Context,
 } from "aws-lambda";
-import fs from "node:fs/promises";
-import path from "node:path";
-import * as settings from "./settings.js";
 import * as helpers from "./helpers.js";
+import * as settings from "./settings.js";
 import { Result } from "./types.js";
 
 export const http: APIGatewayProxyHandlerV2 = async (event, context) => {
@@ -30,7 +30,9 @@ export const http: APIGatewayProxyHandlerV2 = async (event, context) => {
 };
 
 const http_inner = async (event: APIGatewayProxyEventV2, context: Context) => {
-  const data_env = helpers.sanitize_env(process.env);
+  const env = process.env;
+
+  const data_env = helpers.sanitize_env(env);
   const data_settings = helpers.sanitize_settings(settings);
 
   const data_event = helpers.sanitize_event(event);
@@ -38,7 +40,7 @@ const http_inner = async (event: APIGatewayProxyEventV2, context: Context) => {
 
   // NODE_PATH 따라가면 node_modules 목록을 얻을 수 있다.
   // 관심있는건 aws-sdk 목록과 버전
-  const data_nodepath_sdk = await readdir_nodepath_sdk(process.env.NODE_PATH ?? "");
+  const data_nodepath_sdk = await readdir_nodepath_sdk(env.NODE_PATH ?? "");
 
   const output = {
     event: data_event,
@@ -81,27 +83,28 @@ const http_inner = async (event: APIGatewayProxyEventV2, context: Context) => {
 const validate_nodepath_sdk = async (fp: string): Promise<Result<boolean>> => {
   try {
     if (!fp.endsWith("node_modules")) {
-      const err = new Error("NODE_PATH does not end with node_modules");
-      (err as any).path = fp;
+      const err = new Error("NODE_PATH does not end with node_modules", {
+        cause: {
+          path: fp,
+        },
+      });
       return { ok: false, reason: err };
     }
 
     const stat = await fs.stat(path.join(fp, "@aws-sdk"));
     if (!stat.isDirectory()) {
-      const err = new Error("NODE_PATH/@aws-sdk is not directory");
-      (err as any).path = fp;
+      const err = new Error("NODE_PATH/@aws-sdk is not directory", {
+        cause: { path: fp },
+      });
       return { ok: false, reason: err };
-    } else {
-      return { ok: true, value: true };
     }
+    return { ok: true, value: true };
   } catch (e) {
     if (e instanceof Error) {
       return { ok: false, reason: e };
-    } else {
-      const err = new Error("Unknown error");
-      (err as any).path = fp;
-      return { ok: false, reason: err };
     }
+    const err = new Error("Unknown error", { cause: { path: fp } });
+    return { ok: false, reason: err };
   }
 };
 
@@ -110,24 +113,24 @@ const readdir_nodepath_sdk = async (line: string) => {
     line.split(":").map(async (fp: string) => {
       const result = await validate_nodepath_sdk(fp);
       return result.ok ? fp : null;
-    })
+    }),
   );
   const directories = directories_candidate
     .filter((x) => x !== null)
-    .map((x) => x!);
+    .map((x) => x as string);
 
   const results = await Promise.all(
     directories.map(async (fp: string) => {
       const founds = await readdir_sdk(fp);
       const map = Object.fromEntries(founds);
       return [fp, map] as const;
-    })
+    }),
   );
   return Object.fromEntries(results);
 };
 
 const readdir_sdk = async (
-  fp: string
+  fp: string,
 ): Promise<(readonly [string, string])[]> => {
   // 여기까지 진입하기전에 @aws-sdk 디렉토리의 존재는 검증되었다.
   const sdkName = "@aws-sdk";
@@ -144,7 +147,7 @@ const readdir_sdk = async (
       const version = await readdir_version(path.join(sdkPath, f.name));
       const name = `${sdkName}/${f.name}`;
       return [name, version] as const;
-    })
+    }),
   );
   return entries;
 };

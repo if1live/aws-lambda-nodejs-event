@@ -1,4 +1,4 @@
-import { standalone, FunctionDefinition } from "serverless-standalone";
+import { FunctionDefinition, standalone } from "serverless-standalone";
 import * as Handlers from "./handlers.js";
 
 const definitions: FunctionDefinition[] = [

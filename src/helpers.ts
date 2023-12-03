@@ -82,7 +82,7 @@ export const sanitize_context = (context: Context) => {
   const accountId = extractAccountIdFromFunctionArn(next.invokedFunctionArn);
   next.invokedFunctionArn = next.invokedFunctionArn.replace(
     accountId,
-    fakeAccountId
+    fakeAccountId,
   );
   return next;
 };

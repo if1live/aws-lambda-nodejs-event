@@ -19,6 +19,7 @@
     "check:watch": "tsc --watch --noEmit",
     "clean": "rimraf dist artifact .turbo .serverless",
     "dev": "tsx --watch ./src/dev.ts",
+    "fix": "biome check --apply-unsafe .",
     "lint": "biome check .",
     "test": "globstar -- node --import tsx --test \"test/**/*.test.ts\""
   },
