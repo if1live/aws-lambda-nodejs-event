@@ -8,16 +8,18 @@
   "type": "module",
   "main": "index.js",
   "scripts": {
+    "artifact": "tsx etc/build_artifact.ts",
     "build": "tsc",
     "check:watch": "tsc --watch --noEmit",
-    "dev": "tsx --watch ./src/dev.ts",
-    "test": "globstar -- node --import tsx --test \"test/**/*.test.ts\"",
     "clean": "rimraf dist artifact .turbo .serverless",
-    "artifact": "tsx etc/build_artifact.ts"
+    "dev": "tsx --watch ./src/dev.ts",
+    "lint": "biome check .",
+    "test": "globstar -- node --import tsx --test \"test/**/*.test.ts\""
   },
   "devDependencies": {
     "@types/aws-lambda": "^8.10.130",
     "@types/node": "^20.10.2",
+    "biome": "^0.3.3",
     "esbuild": "^0.19.8",
     "globstar": "^1.0.0",
     "rimraf": "^5.0.5",
