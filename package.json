@@ -1,12 +1,18 @@
 {
-  "name": "aws-lambda-nodejs-event",
+  "name": "aws-lambda-probe",
   "version": "1.0.0",
   "description": "",
   "keywords": [],
   "license": "ISC",
   "author": "",
+  "sideEffects": false,
   "type": "module",
-  "main": "index.js",
+  "module": "./dist/src/index.js",
+  "types": "./dist/src/index.d.ts",
+  "files": [
+    "dist",
+    "!dist/test"
+  ],
   "scripts": {
     "artifact": "tsx etc/build_artifact.ts",
     "build": "tsc",
