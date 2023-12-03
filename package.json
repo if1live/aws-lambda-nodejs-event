@@ -24,9 +24,9 @@
   },
   "devDependencies": {
     "@aws-sdk/client-s3": "^3.465.0",
+    "@biomejs/biome": "^1.4.1",
     "@types/aws-lambda": "^8.10.130",
     "@types/node": "^20.10.2",
-    "biome": "^0.3.3",
     "esbuild": "^0.19.8",
     "globstar": "^1.0.0",
     "rimraf": "^5.0.5",
