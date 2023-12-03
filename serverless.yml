@@ -1,4 +1,4 @@
-service: hello-nodejs
+service: aws-lambda-probe
 
 plugins:
   - serverless-scriptable-plugin
