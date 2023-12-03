@@ -3,23 +3,27 @@ import {
   APIGatewayProxyHandlerV2,
   Context,
 } from "aws-lambda";
+import fs from "node:fs/promises";
+import path from "node:path";
 import * as settings from "./settings.js";
 import * as helpers from "./helpers.js";
 
 export const http: APIGatewayProxyHandlerV2 = async (event, context) => {
-  // TODO: 패키지 버전 목록? 전체 패키지 목록 그대로 출력
-
   const data_env = sanitize_env(process.env);
   const data_settings = sanitize_settings(settings);
 
   const data_event = sanitize_event(event);
   const data_context = sanitize_context(context);
 
+  // NODE_PATH 따라가면 node_modules 목록을 얻을 수 있다
+  const data_nodepath = await readdir_nodepath(process.env.NODE_PATH ?? "");
+
   const output = {
     event: data_event,
     context: data_context,
     env: data_env,
     settings: data_settings,
+    nodepath: data_nodepath,
   };
 
   // TODO: 적당히 이쁘게 보이도록
@@ -117,4 +121,60 @@ const sanitize_settings = (s: typeof settings) => {
     NODE_ENV: s.NODE_ENV,
     STAGE: s.STAGE,
   };
+};
+
+const readdir_nodepath = async (line: string) => {
+  const tokens = line.split(":").filter((x) => x.endsWith("node_modules"));
+  const results = await Promise.all(
+    tokens.map(async (fp: string) => {
+      const founds = await readdir_directory(fp);
+      const map = Object.fromEntries(founds);
+      return [fp, map] as const;
+    })
+  );
+  return Object.fromEntries(results);
+};
+
+const readdir_directory = async (
+  fp: string
+): Promise<(readonly [string, string])[]> => {
+  const founds = await fs.readdir(fp, { withFileTypes: true });
+  const founds_library = founds.filter((x) => {
+    if (x.isFile()) {
+      return false;
+    }
+    if (x.name.startsWith(".")) {
+      // .bin, .pnpm, .cache ...
+      return false;
+    }
+    if (x.name.startsWith("@types")) {
+      // 타입정의는 런타임에 필요 없다
+      return false;
+    }
+
+    return true;
+  });
+
+  const entries = await Promise.all(
+    founds_library.map(async (f) => {
+      const version = await readdir_version(path.join(fp, f.name));
+      return [f.name, version] as const;
+    })
+  );
+
+  return entries;
+};
+
+const readdir_version = async (fp: string): Promise<string> => {
+  try {
+    const packageJsonFilePath = path.join(fp, "package.json");
+    const text = await fs.readFile(packageJsonFilePath, "utf-8");
+    const data = JSON.parse(text);
+    const version = data.version;
+    return version;
+  } catch (e) {
+    // 파싱 실패, 또는 파일 열기 실패
+    // 디렉토리 구조같은거 뜯어봐야한다
+    return "<UNKNOWN>";
+  }
 };
