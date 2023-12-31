@@ -35,7 +35,7 @@ package:
 
 functions:
   http:
-    handler: artifact/handlers.http
+    handler: artifact/http_main.handle
     url: true
     package:
       patterns:

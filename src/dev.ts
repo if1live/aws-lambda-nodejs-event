@@ -1,10 +1,10 @@
 import { FunctionDefinition, standalone } from "serverless-standalone";
-import * as Handlers from "./handlers.js";
+import * as http_main from "./handlers/http_main.js";
 
 const definitions: FunctionDefinition[] = [
   {
     name: "http",
-    handler: Handlers.http,
+    handler: http_main.handle,
     events: [
       { httpApi: { route: "ANY /" } },
       { httpApi: { route: "ANY /{pathname+}" } },
@@ -14,6 +14,8 @@ const definitions: FunctionDefinition[] = [
 
 const options = {
   httpApi: { port: 3000 },
+  websocket: { port: 3001 },
+  lambda: { port: 3002 },
 };
 
 const inst = standalone({

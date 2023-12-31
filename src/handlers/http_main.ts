@@ -5,11 +5,11 @@ import {
   APIGatewayProxyHandlerV2,
   Context,
 } from "aws-lambda";
-import * as helpers from "./helpers.js";
-import * as settings from "./settings.js";
-import { Result } from "./types.js";
+import * as helpers from "../helpers.js";
+import * as settings from "../settings.js";
+import { Result } from "../types.js";
 
-export const http: APIGatewayProxyHandlerV2 = async (event, context) => {
+export const handle: APIGatewayProxyHandlerV2 = async (event, context) => {
   try {
     return await http_inner(event, context);
   } catch (e) {

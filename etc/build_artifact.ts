@@ -74,5 +74,5 @@ const build = async (
 };
 
 await Promise.allSettled([
-  build("./src/handlers.js", "handlers.js", opts_common),
+  build("./src/handlers/http_main.js", "http_main.js", opts_common),
 ]);
