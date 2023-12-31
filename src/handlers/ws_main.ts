@@ -86,6 +86,24 @@ export const handle_message = async (
   const connectionId = event.requestContext.connectionId;
   console.log("message", connectionId);
 
+  const re_status = /^status:(\d\d\d)$/;
+  const match_status = re_status.exec(event.body ?? "");
+  if (match_status) {
+    const statusText = match_status[1] ?? "";
+    const statusCode = parseInt(statusText, 10);
+    return {
+      statusCode,
+      body: "OK",
+    };
+  }
+
+  const re_exc = /^exc:(.+)$/;
+  const match_exc = re_exc.exec(event.body ?? "");
+  if (match_exc) {
+    const exc = match_exc[1] ?? "";
+    throw new Error(exc, { cause: event.body });
+  }
+
   const endpoint = deriveEndpoint(event);
   const client = new ApiGatewayManagementApiClient({
     endpoint,
