@@ -62,10 +62,9 @@ const build = async (
   filename: string,
   opts: esbuild.BuildOptions,
 ) => {
-  const fp_outfile =
-    opts.format === "esm"
-      ? `./artifact/${filename.replace(".js", ".mjs")}`
-      : `./artifact/${filename}`;
+  const fp_outfile = opts.format === "esm"
+    ? `./artifact/${filename.replace(".js", ".mjs")}`
+    : `./artifact/${filename}`;
 
   await mybuild({
     ...opts,
