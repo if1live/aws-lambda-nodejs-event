@@ -24,7 +24,7 @@ const opts_common: esbuild.BuildOptions = {
   sourcemap: true,
   treeShaking: true,
   platform: "node",
-  external: ["@aws-sdk/client-s3"],
+  external: ["@aws-sdk/client-s3", "@aws-sdk/client-apigatewaymanagementapi"],
   target: "node20",
   format: "esm",
   mainFields: ["module", "main"],
@@ -75,4 +75,5 @@ const build = async (
 
 await Promise.allSettled([
   build("./src/handlers/http_main.js", "http_main.js", opts_common),
+  build("./src/handlers/ws_main.js", "ws_main.js", opts_common),
 ]);

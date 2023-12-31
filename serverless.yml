@@ -39,7 +39,7 @@ functions:
     url: true
     package:
       patterns:
-        - artifact/handlers.mjs*
+        - artifact/http_main.mjs*
     events:
       - httpApi:
           method: ANY
@@ -47,6 +47,19 @@ functions:
       - httpApi:
           method: ANY
           path: /{pathname+}
+
+  websocket:
+    handler: artifact/ws_main.dispatch
+    package:
+      patterns:
+        - artifact/ws_main.mjs*
+    events:
+      - websocket:
+          route: $connect
+      - websocket:
+          route: $disconnect
+      - websocket:
+          route: $default
 
 custom:
   scriptHooks:
